@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <title>Arbitrum Testnet Bridge</title>
+    <script src="https://cdn.ethers.io/lib/ethers-5.0.umd.min.js" type="application/javascript"></script>
+    <style>
+        .container {
+            text-align: center;
+        }
+
+        .depositPanel {
+            padding-top: 15px;
+        }
+
+        .balance {
+            font-size: 5px;
+        }
+
+        .btnDeposit {
+            margin-left: 2px;
+        }
+
+        .logPanel {
+            padding-top: 5px;
+            font-size: 5px;
+        }
+
+        .logPanel p {
+            margin: 0;
+        }
+
+        .footer {
+            position: fixed;
+            left: 0;
+            bottom: 0;
+            width: 100%;
+            text-align: center;
+            font-size: 8px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1> Arbitrum Testnet Bridge </h1>
+        <button onclick="addNetwork('kovan')">1. Switch to Kovan Test Network</button>
+        <button onclick="connectWallt()">2. Connect Wallet</button></br>
+
+        <div class="depositPanel">
+            <div class="balance"><label>Your Balance:</label><span id="yourBalance">-</span></div><br />
+            <input type="number" step="0.01" id="depositETHAmount" placeholder="deposit amount"></input>
+            <button onclick="depositETH(this)" class="btnDeposit" id="btnDeposit" disabled>deposit ETH</button>
+        </div>
+        <div class="logPanel"> </div>
+    </div>
+
+    <footer class="footer">
+        <a href="https://github.com/01-finance/arbitrum-bridge"> GitHub </a> |
+        Create by <a href="https://www.01.finance/">ZeroOne</a>
+    </footer>
+    <script>
+        const chainConfig = {
+            "kovan": {
+                "chainId": "0x2a",
+                "chainName": "Kovan Test Network",
+                "rpcUrls": ["https://kovan.poa.network"],
+                "blockExplorerUrls": ["https://kovan.etherscan.io"],
+                "nativeCurrency": {
+                    "name": "ETH",
+                    "symbol": "ETH",
+                    "decimals": 18
+                },
+            },
+            "arbV5": {
+                "chainId": "0x8376940b1db0",
+                "chainName": "Arbitrum V5 Test Network",
+                "rpcUrls": ["https://kovan5.arbitrum.io/rpc"],
+                "blockExplorerUrls": ["https://explorer5.arbitrum.io/"],
+                "nativeCurrency": {
+                    "name": "ETH",
+                    "symbol": "ETH",
+                    "decimals": 18
+                },
+
+            }
+        }
+        var loginAcct;
+        var targetChainId = chainConfig["kovan"].chainId;
+
+        window.onload = function () {
+            autoConnect();
+
+            if (typeof window.ethereum !== "undefined") {
+                ethereum.on('accountsChanged', (accounts) => {
+                    connectWallt();
+                });
+
+                ethereum.on('chainChanged', (chainId) => {
+                    window.location.reload();
+                });
+            }
+        };
+
+        function connectWallt() {
+            ethereum.request({ method: 'eth_requestAccounts' }).then(accounts => {
+                appendLog(`connected with ${accounts[0]}, welcome!`)
+                loginAcct = accounts[0];
+                loadETHBalance();
+                document.getElementById("btnDeposit").disabled = false;
+            })
+        }
+        function loadETHBalance() {
+            const provider = new ethers.providers.Web3Provider(ethereum);
+            const signer = provider.getSigner();
+
+            signer.getBalance().then(b => {
+                const balance = ethers.utils.formatEther(b);
+
+                document.getElementById("yourBalance").innerText = `${balance} ETH`;
+            })
+        }
+
+        function autoConnect() {
+            appendLog("This page created by Flux Team <a href='https://flux.01.finance'>01.finance</a>")
+            if (typeof window.ethereum === "undefined") {
+                appendLog("Please install MetaMask first.");
+            } else {
+                window.ethereum.request({ method: 'eth_chainId' }).then(chainId => {
+                    if (targetChainId != parseInt(chainId)) {
+                        appendLog("Please switch network to Kovan Test Network.")
+                    } else {
+                        if (ethereum.isConnected()) {
+                            connectWallt();
+                        } else {
+                            appendLog("Please connect Kovan Test Network.")
+                        }
+                    }
+                })
+            }
+        }
+
+        function appendLog(info) {
+            var p = document.createElement("p");
+            p.innerHTML = `${(new Date()).toLocaleTimeString()} : ${info}`;
+            const panel = document.getElementsByClassName("logPanel")[0];
+            panel.insertBefore(p, panel.firstChild);
+        }
+        function addNetwork(network) {
+            ethereum
+                .request({
+                    method: 'wallet_addEthereumChain',
+                    params: [chainConfig[network]]
+                })
+                .catch((error) => {
+                    appendLog(`switch failed, please switch by yourself. error: ${error.message}`)
+                });
+        }
+
+        async function depositETH(btn) {
+            const old = btn.innerText;
+            btn.disabled = true;
+            btn.innerText = "wait signature..."
+            try {
+                var ethAmount = ethers.utils.parseEther(document.getElementById("depositETHAmount").value);
+                const provider = new ethers.providers.Web3Provider(ethereum);
+                const signer = provider.getSigner();
+                var contract = new ethers.Contract("0x76bf1345224fe606e2ab38b8e52b83512328a9df",
+                    [
+                        "function sendL1FundedContractTransaction(uint256 maxGas, uint256 gasPriceBid, address destAddr, bytes data)  public payable"
+                    ], provider
+                );
+                var tx = await contract.connect(signer).sendL1FundedContractTransaction(3000000, 599999998, loginAcct, "0x", { value: ethAmount });
+                appendLog(`Transaction send done ! <a href='https://kovan.etherscan.io/tx/${tx.hash}' target="_blank"  >${tx.hash}</a>`);
+
+            } catch (error) {
+                appendLog(error.message ? error.message : error.toString());
+            } finally {
+                btn.disabled = false;
+                btn.innerText = old;
+            }
+        }
+
+
+    </script>
+</body>
+
+</html>
